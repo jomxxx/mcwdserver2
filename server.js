@@ -1,12 +1,13 @@
 require("dotenv").config({
   path: require("path").resolve(__dirname, ".env"),
-}); 
+});
 
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
 const appointments = require("./api/appointments");
+const appointmentReports = require("./api/appointmentReports");
 
 const app = express();
 const port = process.env.PORT || "5000";
@@ -29,6 +30,7 @@ app.use((req, res, next) => {
 });
 
 app.use("/api/appointments", appointments);
+app.use("/api/appointmentReports", appointmentReports);
 
 const buildPath = path.join(__dirname, "build");
 app.use(express.static(buildPath));

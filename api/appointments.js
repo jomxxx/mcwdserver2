@@ -2,9 +2,29 @@ const express = require("express");
 const router = express.Router();
 const connectDB = require("../database/connection");
 const { format } = require("date-fns");
+const EventEmitter = require("events");
+const emitter = new EventEmitter();
+emitter.setMaxListeners(20); // Increase the max listeners limit
 
 function generateAppointmentCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+async function fetchFullyBookedSlots(date, time) {
+  try {
+    const query = "SELECT * FROM appointments WHERE date = ? AND time = ?";
+    const [rows] = await pool.query(query, [date, time]);
+    return rows;
+  } catch (error) {
+    if (error.code === "ETIMEDOUT") {
+      console.error("Database connection timed out. Retrying...");
+      // Retry logic (example: retry once after a delay)
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return fetchFullyBookedSlots(date, time);
+    }
+    console.error("Error fetching fully booked slots:", error);
+    throw error;
+  }
 }
 
 router.post("/", async (req, res) => {
@@ -96,11 +116,12 @@ router.get("/fully-booked", async (req, res) => {
       "SELECT date_selected FROM tappointment WHERE que_statuscode = 'PD' GROUP BY date_selected HAVING COUNT(*) >= 10"
     );
 
-    res.status(200).json(fullyBookedSlots);
+    res.status(200).json(fullyBookedSlots || []); // Return an empty array if no results
   } catch (error) {
     console.error("Error fetching fully booked slots:", error);
-    res.status(500).send("Internal server error");
+    res.status(500).json({ error: "Internal server error" }); // Ensure JSON response
   }
 });
+
 
 module.exports = router;
