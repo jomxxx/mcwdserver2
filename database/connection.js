@@ -56,7 +56,7 @@ async function connectDB() {
               ...dbConfig,
               stream,
               waitForConnections: true,
-              connectionLimit: 10, // ✅ Limit connections for better performance
+              connectionLimit: 100, // ✅ Limit connections for better performance
               queueLimit: 0,
               connectTimeout: 20000,
             });
