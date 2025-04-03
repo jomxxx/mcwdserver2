@@ -23,13 +23,17 @@ if (!process.env.SSH_HOST || !process.env.DB_HOST) {
 app.use(cors());
 app.use(bodyParser.json());
 
+// Root route to avoid "Cannot GET /" error
+app.get("/", (req, res) => {
+  res.send("Welcome to the API! Use /api/appointments for appointment data.");
+});
+
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
 app.use("/api/appointments", appointments);
-
 
 app.use((err, req, res, next) => {
   console.error("❌ Server Error:", err.stack);
