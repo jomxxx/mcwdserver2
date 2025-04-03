@@ -30,12 +30,6 @@ app.use((req, res, next) => {
 
 app.use("/api/appointments", appointments);
 
-const buildPath = path.join(__dirname, "build");
-app.use(express.static(buildPath));
-
-app.get("*", (req, res) => {
-  res.sendFile(path.join(buildPath, "index.html"));
-});
 
 app.use((err, req, res, next) => {
   console.error("❌ Server Error:", err.stack);
