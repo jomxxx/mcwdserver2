@@ -16,6 +16,6 @@
     "tunnel-ssh": "^5.2.0"
   },
   "scripts":{
-    "start":"npx install -g pm2 && pm2-runtime server.js"
+    "start":"pm2-runtime server.js"
   }
 }
