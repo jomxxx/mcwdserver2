@@ -16,6 +16,6 @@
     "tunnel-ssh": "^5.2.0"
   },
   "scripts":{
-    "start":"pm2-runtime node server.js"
+    "start":"node server.js"
   }
 }
