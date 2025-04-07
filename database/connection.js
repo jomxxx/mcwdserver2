@@ -35,43 +35,65 @@ if (!dbConfig.database)
 
 let pool;
 
-async function connectDB() {
+async function connectDB(retries = 3, delay = 2000) {
   if (pool) return pool; // ✅ Reuse existing pool
 
   const ssh = new sshClient();
+
   return new Promise((resolve, reject) => {
-    ssh
-      .on("ready", () => {
-        ssh.forwardOut(
-          "127.0.0.1",
-          3306,
-          dbConfig.host,
-          3306,
-          (err, stream) => {
-            if (err) {
-              ssh.end();
-              return reject(new Error("SSH Tunnel Error: " + err.message));
+    const attemptConnection = (retryCount) => {
+      ssh
+        .on("ready", () => {
+          ssh.forwardOut(
+            "127.0.0.1",
+            3306,
+            dbConfig.host,
+            3306,
+            (err, stream) => {
+              if (err) {
+                ssh.end();
+                if (retryCount > 0) {
+                  console.warn(
+                    `SSH Tunnel Error: ${err.message}. Retrying in ${delay}ms...`
+                  );
+                  setTimeout(() => attemptConnection(retryCount - 1), delay);
+                } else {
+                  return reject(
+                    new Error("SSH Tunnel Error: " + err.message)
+                  );
+                }
+              } else {
+                pool = mysql.createPool({
+                  ...dbConfig,
+                  stream,
+                  waitForConnections: true,
+                  connectionLimit: 20, // Increased connection limit
+                  queueLimit: 0,
+                  connectTimeout: 30000, // Increased timeout
+                });
+                resolve(pool);
+              }
             }
-            pool = mysql.createPool({
-              ...dbConfig,
-              stream,
-              waitForConnections: true,
-              connectionLimit: 10, // ✅ Limit connections for better performance
-              queueLimit: 0,
-              connectTimeout: 10000,
-            });
-            resolve(pool);
+          );
+        })
+        .on("error", (err) => {
+          if (retryCount > 0) {
+            console.warn(
+              `SSH Connection Error: ${err.message}. Retrying in ${delay}ms...`
+            );
+            setTimeout(() => attemptConnection(retryCount - 1), delay);
+          } else {
+            reject(
+              new Error(
+                `SSH Connection Error: ${err.message}. Check SSH credentials.`
+              )
+            );
           }
-        );
-      })
-      .on("error", (err) => {
-        reject(
-          new Error(
-            `SSH Connection Error: ${err.message}. Check SSH credentials.`
-          )
-        );
-      })
-      .connect(sshConfig);
+        })
+        .connect(sshConfig);
+    };
+
+    attemptConnection(retries);
   });
 }
 
