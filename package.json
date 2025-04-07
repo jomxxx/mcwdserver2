@@ -9,8 +9,10 @@
     "express-rate-limit": "^7.5.0",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
+    "mysql": "^2.18.1",
     "mysql2": "^3.13.0",
     "node-ssh": "^13.2.0",
+    "pm2": "^6.0.5",
     "rxjs": "^7.8.2",
     "ssh2": "^1.16.0",
     "tunnel-ssh": "^5.2.0"
