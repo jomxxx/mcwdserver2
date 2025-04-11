@@ -44,12 +44,16 @@ router.post("/", async (req, res) => {
       .slice(0, 19)
       .replace("T", " ");
 
+    // Start a transaction
+    await db.beginTransaction();
+
     const [existingBookings] = await db.query(
-      "SELECT COUNT(*) AS count FROM tappointment WHERE date_selected = ?",
+      "SELECT COUNT(*) AS count FROM tappointment WHERE date_selected = ? FOR UPDATE",
       [appointmentDateTime]
     );
 
     if (existingBookings[0].count >= 10) {
+      await db.rollback(); // Rollback transaction if fully booked
       return res.status(400).json({ error: "This time slot is fully booked." });
     }
 
@@ -67,12 +71,15 @@ router.post("/", async (req, res) => {
       ]
     );
 
+    await db.commit(); // Commit transaction
+
     res.status(201).json({
       message: "Appointment created successfully.",
       code: appointmentCode,
     });
   } catch (error) {
     console.error("Error creating appointment:", error);
+    await db.rollback(); // Rollback transaction on error
     res.status(500).json({ error: "Internal server error." });
   }
 });
