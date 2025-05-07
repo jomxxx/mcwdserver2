@@ -2,11 +2,18 @@ const express = require("express");
 const router = express.Router();
 const connectDB = require("../database/connection");
 const EventEmitter = require("events");
+
 const emitter = new EventEmitter();
 emitter.setMaxListeners(20); // Increase the max listeners limit
 
+// Function to generate a 6-character alphanumeric appointment code
 function generateAppointmentCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+// Function to generate a 10-character alphanumeric appointment ID
+function generateAppointmentId() {
+  return Math.random().toString(36).substring(2, 12).toUpperCase();
 }
 
 router.post("/", async (req, res) => {
@@ -19,9 +26,10 @@ router.post("/", async (req, res) => {
   try {
     const db = await connectDB();
     const appointmentCode = generateAppointmentCode();
-    const appointmentId = new Date().toISOString().replace(/[-:.TZ]/g, ""); // Generate appointment_id
+    const appointmentId = generateAppointmentId(); // 10-character random ID
     const formattedDate = new Date(date).toISOString().split("T")[0];
 
+    // Validate and parse time
     const timeMatch = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
     if (!timeMatch) {
       return res.status(400).json({ error: "Invalid time format." });
@@ -37,6 +45,7 @@ router.post("/", async (req, res) => {
       `${formattedDate}T${hour.toString().padStart(2, "0")}:${minute}:00`
     );
 
+    // Set appointment validity for 8 hours 30 minutes
     const validUntilDate = new Date(
       appointmentDateTime.getTime() + (8 * 60 + 30) * 60000
     );
@@ -45,6 +54,7 @@ router.post("/", async (req, res) => {
       .slice(0, 19)
       .replace("T", " ");
 
+    // Check if the time slot is already fully booked
     const [existingBookings] = await db.query(
       "SELECT COUNT(*) AS count FROM tappointment WHERE date_selected = ?",
       [appointmentDateTime]
@@ -54,10 +64,11 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "This time slot is fully booked." });
     }
 
+    // Insert the appointment into the database
     await db.query(
       "INSERT INTO tappointment (appointment_id, appointment_code, date_selected, date_validity, category_code, category_description, age, que_statuscode, que_description, date_created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
       [
-        appointmentId, // Insert appointment_id
+        appointmentId,
         appointmentCode,
         appointmentDateTime,
         date_validity,
@@ -72,7 +83,7 @@ router.post("/", async (req, res) => {
     res.status(201).json({
       message: "Appointment created successfully.",
       code: appointmentCode,
-      appointment_id: appointmentId, // Return appointment_id in the response
+      appointment_id: appointmentId,
     });
   } catch (error) {
     console.error("Error creating appointment:", error);
@@ -101,10 +112,10 @@ router.get("/fully-booked", async (req, res) => {
       "SELECT date_selected FROM tappointment WHERE que_statuscode = 'PD' GROUP BY date_selected HAVING COUNT(*) >= 10"
     );
 
-    res.status(200).json(fullyBookedSlots || []); // Return an empty array if no results
+    res.status(200).json(fullyBookedSlots || []);
   } catch (error) {
     console.error("Error fetching fully booked slots:", error);
-    res.status(500).json({ error: "Internal server error" }); // Ensure JSON response
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
