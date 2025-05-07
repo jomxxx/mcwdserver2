@@ -19,6 +19,7 @@ router.post("/", async (req, res) => {
   try {
     const db = await connectDB();
     const appointmentCode = generateAppointmentCode();
+    const appointmentId = new Date().toISOString().replace(/[-:.TZ]/g, ""); // Generate appointment_id
     const formattedDate = new Date(date).toISOString().split("T")[0];
 
     const timeMatch = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
@@ -54,8 +55,9 @@ router.post("/", async (req, res) => {
     }
 
     await db.query(
-      "INSERT INTO tappointment (appointment_code, date_selected, date_validity, category_code, category_description, age, que_statuscode, que_description, date_created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())",
+      "INSERT INTO tappointment (appointment_id, appointment_code, date_selected, date_validity, category_code, category_description, age, que_statuscode, que_description, date_created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())",
       [
+        appointmentId, // Insert appointment_id
         appointmentCode,
         appointmentDateTime,
         date_validity,
@@ -70,6 +72,7 @@ router.post("/", async (req, res) => {
     res.status(201).json({
       message: "Appointment created successfully.",
       code: appointmentCode,
+      appointment_id: appointmentId, // Return appointment_id in the response
     });
   } catch (error) {
     console.error("Error creating appointment:", error);
