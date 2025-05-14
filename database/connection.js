@@ -1,6 +1,8 @@
 const mysql = require("mysql2/promise");
 const sshClient = require("ssh2").Client;
 
+const LOG_ENABLED = process.env.DB_LOG === "true";
+
 const sshConfig = {
   host: process.env.SSH_HOST,
   port: parseInt(process.env.SSH_PORT, 10),
@@ -34,16 +36,25 @@ if (!dbConfig.database)
   throw new Error("Missing DB_NAME in environment variables.");
 
 let pool;
+let ssh;
+let sshStream;
+
+function log(...args) {
+  if (LOG_ENABLED) {
+    console.log("[DB]", ...args);
+  }
+}
 
 async function connectDB(retries = 3, delay = 2000) {
   if (pool) return pool; // ✅ Reuse existing pool
 
-  const ssh = new sshClient();
+  ssh = new sshClient();
 
   return new Promise((resolve, reject) => {
     const attemptConnection = (retryCount) => {
       ssh
         .on("ready", () => {
+          log("SSH connection ready.");
           ssh.forwardOut(
             "127.0.0.1",
             3306,
@@ -53,24 +64,42 @@ async function connectDB(retries = 3, delay = 2000) {
               if (err) {
                 ssh.end();
                 if (retryCount > 0) {
-                  console.warn(
+                  log(
                     `SSH Tunnel Error: ${err.message}. Retrying in ${delay}ms...`
                   );
                   setTimeout(() => attemptConnection(retryCount - 1), delay);
                 } else {
-                  return reject(
-                    new Error("SSH Tunnel Error: " + err.message)
-                  );
+                  return reject(new Error("SSH Tunnel Error: " + err.message));
                 }
               } else {
+                sshStream = stream;
+                // Enable keep-alive on SSH stream
+                stream.setKeepAlive && stream.setKeepAlive(true, 10000);
+
                 pool = mysql.createPool({
                   ...dbConfig,
                   stream,
                   waitForConnections: true,
-                  connectionLimit: 20, // Increased connection limit
+                  connectionLimit: 20,
                   queueLimit: 0,
-                  connectTimeout: 30000, // Increased timeout
+                  connectTimeout: 30000,
+                  // Enable MySQL keep-alive
+                  enableKeepAlive: true,
+                  keepAliveInitialDelay: 10000,
                 });
+
+                // Handle pool errors and auto-reconnect
+                pool.on &&
+                  pool.on("error", (err) => {
+                    log("MySQL Pool Error:", err);
+                    if (err.code === "PROTOCOL_CONNECTION_LOST") {
+                      log("Reconnecting MySQL pool...");
+                      pool = null;
+                      connectDB().catch((e) => log("Reconnect failed:", e));
+                    }
+                  });
+
+                log("MySQL pool created.");
                 resolve(pool);
               }
             }
@@ -78,7 +107,7 @@ async function connectDB(retries = 3, delay = 2000) {
         })
         .on("error", (err) => {
           if (retryCount > 0) {
-            console.warn(
+            log(
               `SSH Connection Error: ${err.message}. Retrying in ${delay}ms...`
             );
             setTimeout(() => attemptConnection(retryCount - 1), delay);
@@ -90,6 +119,10 @@ async function connectDB(retries = 3, delay = 2000) {
             );
           }
         })
+        .on("close", () => {
+          log("SSH connection closed.");
+          // Optionally, auto-reconnect SSH here if needed
+        })
         .connect(sshConfig);
     };
 
@@ -97,4 +130,47 @@ async function connectDB(retries = 3, delay = 2000) {
   });
 }
 
+// Graceful shutdown
+async function closeDB() {
+  log("Shutting down DB connections...");
+  if (pool) {
+    try {
+      await pool.end();
+      log("MySQL pool closed.");
+    } catch (e) {
+      log("Error closing MySQL pool:", e);
+    }
+    pool = null;
+  }
+  if (sshStream) {
+    try {
+      sshStream.end();
+      log("SSH stream closed.");
+    } catch (e) {
+      log("Error closing SSH stream:", e);
+    }
+    sshStream = null;
+  }
+  if (ssh) {
+    try {
+      ssh.end();
+      log("SSH connection closed.");
+    } catch (e) {
+      log("Error closing SSH connection:", e);
+    }
+    ssh = null;
+  }
+}
+
+// Handle process exit for graceful shutdown
+process.on("SIGINT", async () => {
+  await closeDB();
+  process.exit(0);
+});
+process.on("SIGTERM", async () => {
+  await closeDB();
+  process.exit(0);
+});
+
 module.exports = connectDB;
+module.exports.closeDB = closeDB;
